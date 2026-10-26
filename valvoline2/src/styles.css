@@ -3,8 +3,8 @@
 @tailwind utilities;
 
 .app-shell .brand{min-height:94px;padding-block:12px}
-.app-shell .powered{display:flex;align-items:center;justify-content:center;gap:8px;padding:18px 5px 2px;color:#8195a8;font-size:8px;letter-spacing:1.2px}
-.app-shell .powered img{display:block;width:76px;height:27px;object-fit:contain}
+.app-shell .powered{display:flex;flex-direction:column;align-items:center;gap:7px;margin-top:13px;padding:13px 8px 3px;border-top:1px solid #ffffff1b;color:#91a5b9;font-size:8px;font-weight:700;letter-spacing:1.5px}
+.app-shell .powered img{display:block;width:104px;height:36px;object-fit:contain}
 
 .gantt-bar.in-progress{background:#c7902b}.gantt-bar.at-risk,.gantt-bar.blocked{background:#bb2939}.gantt-bar.not-started{background:#aebbc7}
 .milestone-list{display:flex;flex-direction:column}.milestone-list button{display:flex;align-items:center;justify-content:space-between;gap:9px;padding:7px 0;border:0;border-bottom:1px solid #edf0f3;background:transparent;text-align:left}.milestone-list button:hover b{color:var(--red)}.milestone-list button>span:first-child{min-width:0}.milestone-list b{display:block;color:#45596d;font-size:9px}.milestone-list small{display:block;margin-top:4px;color:#8995a1;font-size:8px}
