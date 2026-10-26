@@ -15,4 +15,6 @@ npm run preview
 
 ## Static deployment
 
-Build with `npm run build` and publish the `dist` directory. Vercel uses `vercel.json` for SPA rewrites. Netlify uses `public/_redirects` (copied into the build output) for SPA routing. No environment variables are required.
+The app is in the `valvoline2` directory of the GitHub repository. In Vercel, set **Root Directory** to `valvoline2`, use `npm run build` as the build command, and `dist` as the output directory. Vercel's SPA rewrite is defined in `vercel.json`.
+
+For a local production preview, run `npm run build` followed by `npm run preview`. Netlify uses `public/_redirects` (copied into the build output) for SPA routing. No environment variables are required.
