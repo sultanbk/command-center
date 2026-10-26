@@ -2,6 +2,8 @@
 
 A client-side, synthetic-data demonstration of a 90-day ServiceNow transition and ongoing managed services. Demo edits persist in browser localStorage; no backend or customer data is used.
 
+For a presenter-ready walkthrough, sample-data explanations, and manager Q&A, see the [Manager Pitch Guide](MANAGER_PITCH_GUIDE.md).
+
 ## Local development
 
 ```sh

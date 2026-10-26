@@ -6,20 +6,21 @@ export type TransitionTask = {
 }
 
 export type Risk = { id: string; title: string; severity: 'Critical' | 'High' | 'Medium'; impact: string; owner: string; due: string; mitigation: string; status: Status; taskId: string }
-export type Incident = { id: string; service: string; priority: 'P1' | 'P2' | 'P3' | 'P4'; state: string; owner: string; created: string; resolved: string; category: string; rca: string; resolution: string; problemId: string }
+export type Incident = { id: string; shortDescription: string; service: string; priority: 'P1' | 'P2' | 'P3' | 'P4'; state: string; owner: string; created: string; resolved: string; category: string; rca: string; resolution: string; problemId: string }
 export type TransitionPhase = { id: string; name: string; startDay: number; endDay: number; exitCriteria: string[] }
 export type Milestone = { id: string; title: string; day: number; owner: string; status: Status; evidence: string }
 export type KTSession = { id: string; topic: string; sme: string; attendees: string[]; planned: string; actual: string | null; status: string; signoff: string; documentId: string }
 export type Document = { id: string; name: string; type: string; source: string; received: boolean; approved: boolean; updated: string; related: string }
 export type Meeting = { id: string; name: string; cadence: string; participants: string; purpose: string; agenda: string; output: string; actions: string; escalation: string }
 export type ActionItem = { id: string; title: string; owner: string; due: string; status: Status; related: string }
-export type Problem = { id: string; title: string; cause: string; sop: string; incidents: number; action: string }
+export type Problem = { id: string; title: string; cause: string; sop: string; incidents: number; action: string; enhancementId: string }
 export type ResourceRole = { title: string; capacity: string; responsibility: string; onboarding: string; continuity: string }
-export type SLARecord = { id: string; month: string; achievement: number; breaches: number }
+export type SLARecord = { id: string; month: string; eligibleTargets: number; metTargets: number; breaches: number; achievement: number; responseEligible: number; responseMet: number; responseCompliance: number; resolutionEligible: number; resolutionMet: number; resolutionCompliance: number; breachReasons: Record<string, number> }
+export type AvailabilityRecord = { id: string; period: string; scheduledMinutes: number; availableMinutes: number }
 export type SOP = { id: string; title: string; module: string; documentId: string; problemId: string }
 export type Integration = { id: string; name: string; pattern: string; source: string; target: string; owner: string; documentId: string }
 export type ServiceNowModule = { id: string; name: string; purpose: string; evidence: string[] }
-export type ChangeRequest = { id: string; title: string; state: string; priority: string; owner: string; estimate: string; value: string; component: string }
+export type ChangeRequest = { id: string; title: string; state: string; approvalState: 'Approved' | 'Pending'; priority: string; owner: string; estimate: string; value: string; component: string }
 export type TestCase = { id: string; requirementId: string; title: string; type: string; status: string }
 export type KnowledgeRelationship = { source: string; target: string }
 
@@ -80,7 +81,7 @@ const riskSeeds = [
   ['Environment refresh window conflicts with KT', 'Medium', 'Hands-on validation may need to be rescheduled.', 'Platform & Access', '2026-12-02', 15],
   ['Open critical incident during reverse KT', 'High', 'Reverse KT availability may be diverted to service recovery.', 'Operations', '2026-12-16', 26],
   ['Knowledge article ownership not confirmed', 'Medium', 'Knowledge maintenance handoff may be unclear.', 'AI & Knowledge', '2026-12-08', 24],
-  ['Service takeover approval criteria pending', 'Critical', 'Day 90 acceptance may be delayed without agreed evidence.', 'Governance', '2027-01-12', 32],
+  ['Service takeover approval criteria pending', 'Critical', 'Day 90 acceptance may be delayed without agreed evidence.', 'Governance', '2026-12-28', 32],
 ]
 export const seedRisks: Risk[] = riskSeeds.map(([title, severity, impact, owner, due, task], i) => ({
   id: `RISK-${String(i + 1).padStart(3, '0')}`, title: String(title), severity: severity as Risk['severity'], impact: String(impact), owner: String(owner), due: String(due),
@@ -88,30 +89,58 @@ export const seedRisks: Risk[] = riskSeeds.map(([title, severity, impact, owner,
   status: i === 0 ? 'At risk' : i === 3 ? 'Blocked' : i < 4 ? 'In progress' : 'Pending', taskId: `TR-${String(Number(task) + 1).padStart(3, '0')}`,
 }))
 
-const incidentTitles = [
-  ['Employee Center', 'Catalog request approval stalled', 'Workflow approval group was inactive', 'Updated approver group and replayed flow', 'PRB001'],
-  ['ITSM', 'Incident assignment queue delay', 'Assignment rule condition excluded location', 'Corrected rule condition and reprocessed queue', 'PRB002'],
-  ['CMDB', 'CI relationship not visible in service map', 'Discovery schedule missed a credential scope', 'Updated credential scope and reran discovery', 'PRB003'],
-  ['IntegrationHub', 'HR feed import completed with errors', 'Source payload contained unmapped department code', 'Added mapping and replayed failed transform rows', 'PRB004'],
-  ['Knowledge', 'Knowledge search returned stale article', 'Article review date exceeded validity policy', 'Reviewed article and refreshed search index', 'PRB005'],
-]
+const incidentScenarios = [
+  ['Employee Center', 'Manager approval remained pending', 'Inactive manager group prevented the approval activity from advancing.', 'Reactivated the approver group and replayed the request.', 'PRB001', 'Workflow'],
+  ['Employee Center', 'Catalog fulfillment task routed to an inactive group', 'The catalog item referenced a retired fulfillment group.', 'Updated the fulfillment group and reassigned the open task.', 'PRB001', 'Request'],
+  ['ITSM', 'Regional incident assigned to the wrong resolver group', 'The assignment rule did not include the site region value.', 'Added the region condition and reassigned affected incidents.', 'PRB002', 'Assignment'],
+  ['ITSM', 'Priority queue accumulated unassigned incidents', 'A rule condition excluded incidents submitted through the portal.', 'Corrected the condition and reprocessed the unassigned queue.', 'PRB002', 'Assignment'],
+  ['CMDB', 'Service map omitted a recently discovered server', 'The discovery schedule did not include the server subnet.', 'Added the subnet to discovery scope and refreshed the service map.', 'PRB003', 'Configuration'],
+  ['CMDB', 'Configuration item relationship was not refreshed', 'A discovery credential expired before the scheduled scan.', 'Renewed the credential and reran the discovery scan.', 'PRB003', 'Configuration'],
+  ['IntegrationHub', 'HR import rejected a department value', 'The source department code was missing from the transform map.', 'Added the department mapping and replayed the rejected row.', 'PRB004', 'Integration'],
+  ['IntegrationHub', 'Employee manager feed stopped after a schema change', 'A new source field changed the payload shape expected by the flow.', 'Updated the field mapping and replayed the failed import set.', 'PRB004', 'Integration'],
+  ['Knowledge', 'Search returned an expired support article', 'The article passed its review date but remained published in the index.', 'Reviewed the content and refreshed the knowledge index.', 'PRB005', 'Knowledge'],
+  ['Knowledge', 'Approved article was missing from employee search', 'The article audience criteria excluded the employee support group.', 'Corrected the audience criteria and validated search visibility.', 'PRB005', 'Knowledge'],
+] as const
+const incidentRegions = ['North America', 'Europe', 'India', 'LATAM', 'APAC']
+const incidentMonths = ['05', '06', '07', '08', '09', '10']
+const normalIncidentDays = [2, 5, 8, 20, 24, 27]
 export const incidents: Incident[] = Array.from({ length: 50 }, (_, index) => {
-  const seed = incidentTitles[index % incidentTitles.length]
-  const day = String((index % 28) + 1).padStart(2, '0')
-  const priority = index % 19 === 0 ? 'P1' : index % 5 === 0 ? 'P2' : index % 3 === 0 ? 'P3' : 'P4'
-  const active = index % 7 === 0 && index !== 6
-  return { id: `INC${String(1001 + index)}`, service: String(seed[0]), priority, state: active ? 'In progress' : 'Resolved', owner: owners[index % owners.length], created: `2026-${index < 25 ? '10' : '09'}-${day}`, resolved: active ? '—' : `2026-${index < 25 ? '10' : '09'}-${String(Math.min(28, Number(day) + 1)).padStart(2, '0')}`, category: ['Access', 'Workflow', 'Integration', 'Data'][index % 4], rca: String(seed[2]), resolution: String(seed[3]), problemId: String(seed[4]) }
-})
-
+  const scenario = incidentScenarios[index % incidentScenarios.length]
+  const monthIndex = Math.floor(index * incidentMonths.length / 50)
+  const monthStart = Math.ceil(monthIndex * 50 / incidentMonths.length)
+  const positionInMonth = index - monthStart
+  const dayNumber = positionInMonth < 3 ? 12 + monthIndex : normalIncidentDays[positionInMonth - 3]
+  const day = String(dayNumber).padStart(2, '0')
+  const created = `2026-${incidentMonths[monthIndex]}-${day}`
+  const priority: Incident['priority'] = index % 19 === 0 ? 'P1' : index % 5 === 0 ? 'P2' : index % 3 === 0 ? 'P3' : 'P4'
+  const active = [38, 43, 49].includes(index)
+  const resolved = active ? '—' : `2026-${incidentMonths[monthIndex]}-${String(Math.min(28, dayNumber + 1)).padStart(2, '0')}`
+  const region = incidentRegions[Math.floor(index / incidentScenarios.length)]
+  return {
+    id: `INC${String(1001 + index)}`, shortDescription: `${String(scenario[1])} · ${region}`, service: String(scenario[0]), priority,
+    state: active ? 'In progress' : 'Resolved', owner: owners[index % owners.length], created, resolved,
+    category: String(scenario[5]), rca: String(scenario[2]), resolution: String(scenario[3]), problemId: String(scenario[4]),
+  }
+}).sort((a, b) => b.created.localeCompare(a.created))
+const ktTopics = ['Platform architecture and environments', 'Incident lifecycle and priorities', 'Employee Center catalog fulfillment', 'CMDB data model and ownership', 'HR IntegrationHub transforms and retries', 'SLA measurement and breach process', 'Problem management and root cause analysis', 'Service mapping and discovery scope', 'Access provisioning and platform roles', 'Request assignment rules', 'Change enablement and approvals', 'Knowledge authoring and review', 'Major incident communications', 'Release and rollback procedure', 'Integration monitoring and recovery', 'Service catalog test evidence', 'Escalation matrix and on-call coverage', 'Transition signoff and operational acceptance']
 export const ktSessions: KTSession[] = Array.from({ length: 18 }, (_, i) => ({
-  id: `KT-${String(i + 1).padStart(2, '0')}`, topic: ['Platform architecture overview', 'Incident and request workflows', 'Employee Center catalog', 'CMDB and discovery', 'IntegrationHub patterns', 'SLA and reporting logic'][i % 6],
+  id: `KT-${String(i + 1).padStart(2, '0')}`, topic: ktTopics[i],
   sme: ['Valvoline platform owner', 'Incumbent ServiceNow lead', 'Incumbent integration SME'][i % 3], attendees: ['Valvoline service owner', 'Incumbent SME', 'Prodapt technical SME'], planned: i < 7 ? `2026-10-${String(12 + i).padStart(2, '0')}` : i < 12 ? `2026-10-${String(27 + i - 7).padStart(2, '0')}` : `2026-11-${String(1 + i - 12).padStart(2, '0')}`, actual: i < 7 ? `2026-10-${String(13 + i).padStart(2, '0')}` : null, status: i < 7 ? 'Complete' : i < 12 ? 'In progress' : 'Planned', signoff: i < 5 ? 'Approved' : 'Pending', documentId: `DOC-${String((i % 24) + 1).padStart(3, '0')}`,
 }))
 
-export const documents: Document[] = Array.from({ length: 26 }, (_, i) => ({
-  id: `DOC-${String(i + 1).padStart(3, '0')}`, name: ['ServiceNow platform architecture', 'Incident management SOP', 'Catalog request runbook', 'Integration inventory', 'SLA measurement definition', 'CMDB data model', 'Major incident RCA', 'Knowledge article standards', 'Environment access matrix', 'Release calendar'][i % 10],
-  type: ['Architecture', 'SOP', 'Runbook', 'Integration', 'SLA report', 'Configuration', 'RCA', 'Requirements', 'KT recording', 'Change Request'][i % 10], source: `SP-SNOW-${String(240 + i)}`, received: i < 19, approved: i < 14, updated: `2026-10-${String(10 + (i % 18)).padStart(2, '0')}`, related: `KT-${String((i % 18) + 1).padStart(2, '0')}`,
-}))
+const documentNames = ['ServiceNow platform architecture', 'Incident management SOP', 'Employee Center catalog runbook', 'Integration inventory', 'SLA measurement definition', 'CMDB data model', 'Major incident RCA', 'Knowledge article standards', 'Environment access matrix', 'Release calendar and rollback plan', 'Service mapping runbook', 'Discovery credential matrix', 'HR transform map specification', 'Request fulfillment workflow', 'Assignment rules catalog', 'Severity and escalation policy', 'Knowledge taxonomy and ownership', 'Monthly SLA report sample', 'Integration recovery runbook', 'Change approval policy', 'Problem management standards', 'Service catalog test evidence', 'Architecture KT recording', 'ITSM workflow KT recording', 'Operations support model', 'Transition acceptance checklist']
+const documentTypes = ['Architecture', 'SOP', 'Runbook', 'Integration', 'SLA report', 'Configuration', 'RCA', 'Requirements', 'Configuration', 'Change Request', 'SOP', 'Configuration', 'Integration', 'Requirements', 'Configuration', 'SOP', 'Requirements', 'SLA report', 'Runbook', 'Change Request', 'SOP', 'Test evidence', 'KT recording', 'KT recording', 'Runbook', 'Acceptance evidence']
+const receivedDocumentNumbers = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 16, 17, 18, 20, 22, 25])
+const approvedDocumentNumbers = new Set([1, 2, 3, 5, 6, 7, 8, 9, 11, 12, 13, 14, 16, 17])
+export const documents: Document[] = Array.from({ length: 26 }, (_, i) => {
+  const monthIndex = Math.floor(i * 6 / 26)
+  const month = ['05', '06', '07', '08', '09', '10'][monthIndex]
+  return {
+    id: `DOC-${String(i + 1).padStart(3, '0')}`, name: documentNames[i], type: documentTypes[i], source: `SP-SNOW-${String(240 + i)}`,
+    received: receivedDocumentNumbers.has(i + 1), approved: approvedDocumentNumbers.has(i + 1),
+    updated: `2026-${month}-${String(3 + (i * 7) % 25).padStart(2, '0')}`, related: `KT-${String((i % 18) + 1).padStart(2, '0')}`,
+  }
+})
 
 export const meetings: Meeting[] = [
   { id: 'GOV-01', name: 'Transition stand-up', cadence: 'Daily', participants: 'Transition workstream leads, Prodapt delivery team', purpose: 'Resolve blockers and coordinate next-day execution.', agenda: 'Progress, access blockers, KT actions, critical path', output: 'Updated action log and escalations', actions: 'Confirm access owners; assign blocker actions; update critical path.', escalation: 'Transition Lead to executive steering' },
@@ -125,24 +154,24 @@ export const actionItems: ActionItem[] = [
   { id: 'ACT-001', title: 'Confirm HR feed retry and recovery procedure', owner: 'Integration SME', due: '2026-10-29', status: 'In progress', related: 'KT-05' },
   { id: 'ACT-002', title: 'Share current approval group ownership', owner: 'Valvoline platform owner', due: '2026-10-30', status: 'Pending', related: 'KT-03' },
   { id: 'ACT-003', title: 'Validate service map credential scope', owner: 'Incumbent platform SME', due: '2026-11-02', status: 'Pending', related: 'RISK-002' },
-  { id: 'ACT-004', title: 'Approve incident routing runbook', owner: 'Transition Lead', due: '2026-11-04', status: 'In progress', related: 'DOC-003' },
+  { id: 'ACT-004', title: 'Approve incident routing runbook', owner: 'Transition Lead', due: '2026-11-04', status: 'In progress', related: 'DOC-002' },
 ]
 
 export const problems: Problem[] = [
-  { id: 'PRB001', title: 'Catalog approvals intermittently stall', cause: 'Inactive or misrouted approver group', sop: 'DOC-003', incidents: incidents.filter(x => x.problemId === 'PRB001').length, action: 'Quarterly approval group validation and automated exception report' },
-  { id: 'PRB002', title: 'Assignment delays for regional incidents', cause: 'Assignment rule conditions do not include all locations', sop: 'DOC-002', incidents: incidents.filter(x => x.problemId === 'PRB002').length, action: 'Normalize location values and add rule coverage tests' },
-  { id: 'PRB003', title: 'Service map relationship gaps', cause: 'Discovery credential scope excludes selected subnets', sop: 'DOC-006', incidents: incidents.filter(x => x.problemId === 'PRB003').length, action: 'Review credential coverage with infrastructure owners' },
-  { id: 'PRB004', title: 'HR integration transform exceptions', cause: 'New source department values are not mapped', sop: 'DOC-004', incidents: incidents.filter(x => x.problemId === 'PRB004').length, action: 'Add mapping governance and alerting for unmapped values' },
-  { id: 'PRB005', title: 'Knowledge search returns stale content', cause: 'Article review validity expired before search index refresh', sop: 'DOC-008', incidents: incidents.filter(x => x.problemId === 'PRB005').length, action: 'Automate article review reminders and validate index refresh completion' },
+  { id: 'PRB001', title: 'Catalog approvals intermittently stall', cause: 'Inactive or misrouted approver group', sop: 'SOP-002', incidents: incidents.filter(x => x.problemId === 'PRB001').length, action: 'Quarterly approval group validation and automated exception report', enhancementId: 'ENH-101' },
+  { id: 'PRB002', title: 'Assignment delays for regional incidents', cause: 'Assignment rule conditions do not include all locations', sop: 'SOP-001', incidents: incidents.filter(x => x.problemId === 'PRB002').length, action: 'Normalize location values and add rule coverage tests', enhancementId: 'ENH-104' },
+  { id: 'PRB003', title: 'Service map relationship gaps', cause: 'Discovery credential scope excludes selected subnets', sop: 'SOP-004', incidents: incidents.filter(x => x.problemId === 'PRB003').length, action: 'Review credential coverage with infrastructure owners', enhancementId: 'ENH-103' },
+  { id: 'PRB004', title: 'HR integration transform exceptions', cause: 'New source department values are not mapped', sop: 'SOP-003', incidents: incidents.filter(x => x.problemId === 'PRB004').length, action: 'Add mapping governance and alerting for unmapped values', enhancementId: 'ENH-105' },
+  { id: 'PRB005', title: 'Knowledge search returns stale content', cause: 'Article review validity expired before search index refresh', sop: 'SOP-005', incidents: incidents.filter(x => x.problemId === 'PRB005').length, action: 'Automate article review reminders and validate index refresh completion', enhancementId: 'ENH-102' },
 ]
 
 export const enhancements: ChangeRequest[] = [
-  { id: 'ENH-101', title: 'Manager approval for employee onboarding', state: 'Impact analysis', priority: 'High', owner: 'Platform SME', estimate: '8 days', value: 'Reduce incomplete onboarding requests', component: 'Employee Center' },
-  { id: 'ENH-102', title: 'Automate stale knowledge review reminders', state: 'Approved', priority: 'Medium', owner: 'Knowledge Lead', estimate: '5 days', value: 'Improve knowledge freshness', component: 'Knowledge' },
-  { id: 'ENH-103', title: 'Service map exception dashboard', state: 'Testing', priority: 'Medium', owner: 'ServiceNow Architect', estimate: '10 days', value: 'Increase CMDB relationship visibility', component: 'CMDB' },
-  { id: 'ENH-104', title: 'Regional assignment rule normalization', state: 'Development', priority: 'High', owner: 'Operations Lead', estimate: '6 days', value: 'Reduce incident routing time', component: 'ITSM' },
-  { id: 'ENH-105', title: 'HR feed mapping exception notifications', state: 'Intake', priority: 'Medium', owner: 'Platform SME', estimate: '4 days', value: 'Shorten integration recovery', component: 'IntegrationHub' },
-  ...Array.from({ length: 7 }, (_, i) => ({ id: `ENH-${106 + i}`, title: ['Self-service password reset improvements', 'Major incident communication template', 'Change conflict visibility', 'Catalog fulfillment analytics', 'SLA warning notifications', 'CMDB ownership attestation', 'Request fulfillment automation'][i], state: ['Intake', 'Prioritization', 'Approved', 'Development', 'Testing', 'Release ready', 'Intake'][i], priority: i % 2 ? 'Medium' : 'Low', owner: owners[i % owners.length], estimate: `${4 + (i % 7)} days`, value: 'Improve service experience and operational efficiency', component: ['ITSM', 'ITSM', 'Change', 'Employee Center', 'Service Level Management', 'CMDB', 'Employee Center'][i] }))
+  { id: 'ENH-101', title: 'Manager approval for employee onboarding', state: 'Impact analysis', approvalState: 'Pending', priority: 'High', owner: 'Platform SME', estimate: '8 days', value: 'Reduce incomplete onboarding requests', component: 'Employee Center' },
+  { id: 'ENH-102', title: 'Automate stale knowledge review reminders', state: 'Approved', approvalState: 'Approved', priority: 'Medium', owner: 'Knowledge Lead', estimate: '5 days', value: 'Improve knowledge freshness', component: 'Knowledge' },
+  { id: 'ENH-103', title: 'Service map exception dashboard', state: 'Testing', approvalState: 'Approved', priority: 'Medium', owner: 'ServiceNow Architect', estimate: '10 days', value: 'Increase CMDB relationship visibility', component: 'CMDB' },
+  { id: 'ENH-104', title: 'Regional assignment rule normalization', state: 'Development', approvalState: 'Approved', priority: 'High', owner: 'Operations Lead', estimate: '6 days', value: 'Reduce incident routing time', component: 'ITSM' },
+  { id: 'ENH-105', title: 'HR feed mapping exception notifications', state: 'Intake', approvalState: 'Pending', priority: 'Medium', owner: 'Platform SME', estimate: '4 days', value: 'Shorten integration recovery', component: 'IntegrationHub' },
+  ...Array.from({ length: 7 }, (_, i) => ({ id: `ENH-${106 + i}`, title: ['Self-service password reset improvements', 'Major incident communication template', 'Change conflict visibility', 'Catalog fulfillment analytics', 'SLA warning notifications', 'CMDB ownership attestation', 'Request fulfillment automation'][i], state: ['Intake', 'Prioritization', 'Approved', 'Development', 'Testing', 'Release ready', 'Intake'][i], approvalState: i === 2 || i === 3 || i === 4 || i === 5 ? 'Approved' as const : 'Pending' as const, priority: i % 2 ? 'Medium' : 'Low', owner: owners[i % owners.length], estimate: `${4 + (i % 7)} days`, value: 'Improve service experience and operational efficiency', component: ['ITSM', 'ITSM', 'Change', 'Employee Center', 'Service Level Management', 'CMDB', 'Employee Center'][i] }))
 ]
 
 export const roles: ResourceRole[] = [
@@ -154,10 +183,34 @@ export const roles: ResourceRole[] = [
   { title: 'Governance Analyst', capacity: '0.5 FTE', responsibility: 'Actions, minutes, reports and evidence repository', onboarding: 'Complete', continuity: 'Service reporting' },
 ]
 
-export const slaTrend: SLARecord[] = [
-  { id: 'SLA-MAY-26', month: 'May', achievement: 96.8, breaches: 18 }, { id: 'SLA-JUN-26', month: 'Jun', achievement: 97.4, breaches: 14 }, { id: 'SLA-JUL-26', month: 'Jul', achievement: 96.2, breaches: 21 },
-  { id: 'SLA-AUG-26', month: 'Aug', achievement: 98.1, breaches: 11 }, { id: 'SLA-SEP-26', month: 'Sep', achievement: 97.6, breaches: 13 }, { id: 'SLA-OCT-26', month: 'Oct', achievement: 98.4, breaches: 9 },
+const slaSeeds = [
+  { id: 'SLA-MAY-26', month: 'May', eligibleTargets: 563, metTargets: 545, responseEligible: 1000, responseMet: 984, resolutionEligible: 1000, resolutionMet: 973, breachReasons: { 'Late assignment / routing': 5, 'Catalog approval / fulfillment': 4, 'Integration mapping / import': 3, 'Knowledge search / article quality': 3, 'CMDB discovery / relationship': 3 } },
+  { id: 'SLA-JUN-26', month: 'Jun', eligibleTargets: 540, metTargets: 526, responseEligible: 1000, responseMet: 989, resolutionEligible: 1000, resolutionMet: 981, breachReasons: { 'Late assignment / routing': 4, 'Catalog approval / fulfillment': 3, 'Integration mapping / import': 2, 'Knowledge search / article quality': 3, 'CMDB discovery / relationship': 2 } },
+  { id: 'SLA-JUL-26', month: 'Jul', eligibleTargets: 552, metTargets: 531, responseEligible: 1000, responseMet: 983, resolutionEligible: 1000, resolutionMet: 974, breachReasons: { 'Late assignment / routing': 6, 'Catalog approval / fulfillment': 5, 'Integration mapping / import': 4, 'Knowledge search / article quality': 3, 'CMDB discovery / relationship': 3 } },
+  { id: 'SLA-AUG-26', month: 'Aug', eligibleTargets: 580, metTargets: 569, responseEligible: 1000, responseMet: 991, resolutionEligible: 1000, resolutionMet: 985, breachReasons: { 'Late assignment / routing': 3, 'Catalog approval / fulfillment': 2, 'Integration mapping / import': 2, 'Knowledge search / article quality': 2, 'CMDB discovery / relationship': 2 } },
+  { id: 'SLA-SEP-26', month: 'Sep', eligibleTargets: 552, metTargets: 539, responseEligible: 1000, responseMet: 987, resolutionEligible: 1000, resolutionMet: 978, breachReasons: { 'Late assignment / routing': 4, 'Catalog approval / fulfillment': 3, 'Integration mapping / import': 2, 'Knowledge search / article quality': 2, 'CMDB discovery / relationship': 2 } },
+  { id: 'SLA-OCT-26', month: 'Oct', eligibleTargets: 563, metTargets: 554, responseEligible: 1000, responseMet: 993, resolutionEligible: 1000, resolutionMet: 983, breachReasons: { 'Late assignment / routing': 3, 'Catalog approval / fulfillment': 2, 'Integration mapping / import': 2, 'Knowledge search / article quality': 1, 'CMDB discovery / relationship': 1 } },
 ]
+export const slaTrend: SLARecord[] = slaSeeds.map(item => ({
+  ...item,
+  breaches: item.eligibleTargets - item.metTargets,
+  achievement: Number((item.metTargets / item.eligibleTargets * 100).toFixed(1)),
+  responseCompliance: Number((item.responseMet / item.responseEligible * 100).toFixed(1)),
+  resolutionCompliance: Number((item.resolutionMet / item.resolutionEligible * 100).toFixed(1)),
+}))
+
+export const serviceAvailability: AvailabilityRecord = {
+  id: 'AVAIL-2026-10', period: 'Rolling 30 days', scheduledMinutes: 43200, availableMinutes: 43165,
+}
+
+// Representative seeded incident evidence behind the simulated breach-reason categories.
+export const slaBreachEvidence: Record<string, string[]> = {
+  'Late assignment / routing': ['INC1003', 'INC1004', 'INC1013', 'INC1014'],
+  'Catalog approval / fulfillment': ['INC1001', 'INC1002', 'INC1011'],
+  'Integration mapping / import': ['INC1007', 'INC1008', 'INC1017', 'INC1018'],
+  'Knowledge search / article quality': ['INC1009', 'INC1010', 'INC1019', 'INC1020'],
+  'CMDB discovery / relationship': ['INC1005', 'INC1006', 'INC1015', 'INC1016'],
+}
 
 export const serviceNowModules: ServiceNowModule[] = [
   { id: 'ITSM', name: 'IT Service Management', purpose: 'Incident, request, problem, and change workflows', evidence: ['DOC-002', 'DOC-003'] },
@@ -198,13 +251,13 @@ export const raciValues = [
 
 export const graphNodes = [
   { id: 'ITSM', type: 'Module', x: 50, y: 42 }, { id: 'Employee Center', type: 'Module', x: 22, y: 28 }, { id: 'CMDB', type: 'Module', x: 77, y: 24 },
-  { id: 'IntegrationHub', type: 'Integration', x: 81, y: 68 }, { id: 'DOC-003', type: 'SOP', x: 28, y: 68 }, { id: 'INC1007', type: 'Incident', x: 50, y: 77 },
+  { id: 'IntegrationHub', type: 'Integration', x: 81, y: 68 }, { id: 'DOC-003', type: 'SOP', x: 28, y: 68 }, { id: 'INC1043', type: 'Incident', x: 50, y: 77 },
   { id: 'KT-03', type: 'KT session', x: 18, y: 49 }, { id: 'ENH-101', type: 'Change request', x: 68, y: 50 }, { id: 'SLA-OCT-26', type: 'Report', x: 47, y: 20 },
 ]
 export const graphEdges: KnowledgeRelationship[] = [
-  { source: 'ITSM', target: 'INC1007' }, { source: 'ITSM', target: 'DOC-003' }, { source: 'Employee Center', target: 'ENH-101' },
+  { source: 'ITSM', target: 'INC1043' }, { source: 'ITSM', target: 'DOC-003' }, { source: 'Employee Center', target: 'ENH-101' },
   { source: 'ENH-101', target: 'IntegrationHub' }, { source: 'CMDB', target: 'SLA-OCT-26' }, { source: 'KT-03', target: 'DOC-003' },
-  { source: 'INC1007', target: 'SLA-OCT-26' }, { source: 'ITSM', target: 'KT-03' }, { source: 'ENH-101', target: 'ITSM' },
+  { source: 'INC1043', target: 'SLA-OCT-26' }, { source: 'ITSM', target: 'KT-03' }, { source: 'ENH-101', target: 'ITSM' },
 ]
 
 export const assistantQuestions = [
@@ -213,17 +266,41 @@ export const assistantQuestions = [
   'Which transition documents are missing?', 'What percentage of transition is complete?', 'What could delay Day 60 readiness?',
 ]
 
-export const getAssistantAnswer = (question: string, completion: number) => {
+export const getAssistantAnswer = (question: string, completion: number, context: { sessions?: KTSession[]; actions?: ActionItem[]; receivedDocs?: string[]; approvedDocs?: string[]; risks?: Risk[]; assistantKind?: string } = {}) => {
   const q = question.toLowerCase()
+  const currentSessions = context.sessions ?? ktSessions
+  const currentActions = context.actions ?? actionItems
+  const currentRisks = context.risks ?? seedRisks
+  const received = context.receivedDocs ?? documents.filter(item => item.received).map(item => item.id)
+  const approved = context.approvedDocs ?? documents.filter(item => item.approved).map(item => item.id)
+  if (context.assistantKind === 'enhancement-assistant') {
+    const request = enhancements.find(item => item.id === 'ENH-101')!
+    const linkedTests = testCases.filter(item => item.requirementId.startsWith('REQ-10'))
+    if (q.includes('test')) return { text: `${linkedTests.length} seeded test cases cover the manager approval request: ${linkedTests.map(item => `${item.id} (${item.title})`).join('; ')}.`, sources: [request.id, ...linkedTests.map(item => item.id)] }
+    if (q.includes('integration') || q.includes('workflow') || q.includes('system') || q.includes('impact') || q.includes('manager approval') || q.includes('summary')) return { text: `${request.title} affects the ${request.component} catalog request, a manager-approval workflow, and the HR employee and manager feed. Confirm manager data quality and test the fallback path before approval routing.`, sources: [request.id, 'DOC-003', 'INT-001', 'DOC-004', ...linkedTests.slice(0, 2).map(item => item.id)] }
+    return { text: 'This enhancement detail is unavailable in the seeded demo dataset. Try one of the suggested impact questions.', sources: [] }
+  }
   if (q.includes('architecture')) return { text: 'The demo architecture includes ITSM, Employee Center, CMDB, IntegrationHub, Knowledge, and service reporting. Architecture baseline evidence is tracked in the document inventory.', sources: ['DOC-001', 'DOC-006', 'DOC-004'] }
   if (q.includes('integration')) return { text: 'The seeded scope includes the HR feed through IntegrationHub, discovery credentials, and catalog fulfillment dependencies. Ownership confirmation is tracked as a transition risk.', sources: ['DOC-004', 'RISK-004', 'TR-013'] }
-  if (q.includes('spike')) return { text: 'Unusual incident spike days are unavailable from this sample because it has no anomaly baseline or spike annotations. The seeded records can be inspected by creation date in Incident Management.', sources: ['INC1001', 'INC1007', 'INC1050'] }
-  if (q.includes('trend') || q.includes('six months')) return { text: `The ${incidents.length}-record incident sample covers September and October 2026, so it cannot support a six-month incident trend. The six-month SLA achievement series is available in Operations > SLA Performance.`, sources: ['INC1001', 'INC1026', 'SLA-MAY-26', 'SLA-OCT-26'] }
-  if (q.includes('kt session 3') || q.includes('session 3')) return { text: 'KT-03 covers the Employee Center catalog request flow with the incumbent ServiceNow lead. Its linked evidence record is DOC-003; session completion and sign-off are tracked in the KT register.', sources: ['KT-03', 'DOC-003'] }
-  if (q.includes('pending kt') || q.includes('kt action')) return { text: `${ktSessions.filter(x => x.status !== 'Complete').length} KT sessions remain in progress or planned. Open questions are owned through the session evidence log and transition governance action register.`, sources: ['KT-08', 'KT-12', 'GOV-02'] }
-  if (q.includes('missing') || q.includes('documents')) return { text: `${documents.filter(x => !x.received).length} required documents are not yet received, and ${documents.filter(x => x.received && !x.approved).length} received documents still need approval.`, sources: documents.filter(x => !x.received || !x.approved).slice(0, 4).map(x => x.id) }
+  if (q.includes('spike')) {
+    const byDate = incidents.reduce<Record<string, Incident[]>>((groups, item) => { (groups[item.created] ??= []).push(item); return groups }, {})
+    const spikeDays = Object.entries(byDate).filter(([, items]) => items.length >= 3).sort(([a], [b]) => a.localeCompare(b))
+    const details = spikeDays.map(([date, items]) => `${date}: ${items.length} incidents`).join('; ')
+    return { text: `For this synthetic sample, a spike is defined as 3 or more incidents opened on one date. Spike dates: ${details}. The median on other active dates is 1 incident.`, sources: spikeDays.flatMap(([, items]) => items.map(item => item.id)) }
+  }
+  if (q.includes('trend') || q.includes('six months')) {
+    const monthly = incidentMonths.map((month, index) => {
+      const records = incidents.filter(item => item.created.slice(5, 7) === month)
+      return { label: ['May', 'June', 'July', 'August', 'September', 'October'][index], records }
+    })
+    return { text: `The ${incidents.length}-record synthetic incident sample spans May–October 2026. Monthly opened incidents: ${monthly.map(item => `${item.label} ${item.records.length}`).join(', ')}.`, sources: monthly.map(item => item.records[0]?.id).filter((id): id is string => Boolean(id)) }
+  }
+  if (q.includes('kt session 3') || q.includes('session 3')) { const session = currentSessions.find(item => item.id === 'KT-03') ?? ktSessions[2]; return { text: `${session.id} covers ${session.topic} with ${session.sme}. Status: ${session.status}; sign-off: ${session.signoff}.`, sources: [session.id, session.documentId] } }
+  if (q.includes('kt action')) { const pending = currentActions.filter(item => item.status !== 'Complete' && item.status !== 'Approved'); return { text: `${pending.length} KT actions are open. ${pending.map(item => `${item.id}: ${item.title} (owner: ${item.owner}, due: ${item.due})`).join('; ') || 'All tracked KT actions are complete.'}`, sources: pending.map(item => item.id) } }
+  if (q.includes('pending kt')) { const pending = currentSessions.filter(item => item.status !== 'Complete'); return { text: `${pending.length} KT sessions remain in progress, at risk, blocked, or planned.`, sources: pending.slice(0, 5).map(item => item.id) } }
+  if (q.includes('missing') || q.includes('documents')) { const missing = documents.filter(item => !received.includes(item.id)); const needsApproval = documents.filter(item => received.includes(item.id) && !approved.includes(item.id)); return { text: `${missing.length} required documents are not yet received, and ${needsApproval.length} received documents still need approval.`, sources: [...missing, ...needsApproval].slice(0, 4).map(item => item.id) } }
   if (q.includes('complete') || q.includes('percentage')) return { text: `Transition completion is ${Math.round(completion)}% based on the current task records across ${transitionTasks.length} seeded activities.`, sources: ['TR-001', 'TR-009', 'TR-017'] }
-  if (q.includes('day 60') || q.includes('delay')) return { text: 'Day 60 readiness depends on access validation, completed structured KT, usable SOP evidence, and integration ownership. Current high-impact watch items include platform access and SME coverage.', sources: ['RISK-001', 'RISK-003', 'TR-016', 'TR-026'] }
+  if (q.includes('day 60') || q.includes('delay')) { const watch = currentRisks.filter(item => item.status !== 'Complete' && item.status !== 'Approved').slice(0, 3); return { text: 'Day 60 readiness depends on access validation, completed structured KT, usable SOP evidence, and integration ownership. Current open risks include: ' + watch.map(item => item.title).join('; ') + '.', sources: [...watch.map(item => item.id), ...watch.map(item => item.taskId)] } }
   if (q.includes('inc1007') || q.includes('resolved') || q.includes('root cause') || q.includes('sop') || q.includes('who resolved')) {
     const incident = incidents.find(item => item.id === 'INC1007')!
     const problem = problems.find(item => item.id === incident.problemId)!
@@ -234,9 +311,9 @@ export const getAssistantAnswer = (question: string, completion: number) => {
     if (q.includes('sop')) return { text: `The applicable procedure for ${problem.title} is ${problem.sop}. The recurring issue is tracked as ${problem.id}.`, sources: [incident.id, problem.id, problem.sop] }
     return { text: `${incident.id} (${incident.service}, ${incident.state}) has root cause: ${incident.rca}. Resolution: ${incident.resolution}. The recurring cluster is ${problem.id}.`, sources: [incident.id, problem.id, problem.sop] }
   }
-  if (q.includes('sla')) return { text: 'The latest simulated monthly SLA achievement is 98.4%, with 9 recorded breaches. Use the SLA Performance view to inspect the trend and breach reasons.', sources: ['SLA-OCT', 'INC1007'] }
-  if (q.includes('recurring')) return { text: 'Recurring clusters are catalog approval routing, regional assignment delays, service map relationship gaps, and HR integration transform exceptions.', sources: ['PRB001', 'PRB002', 'PRB003', 'PRB004'] }
-  if (q.includes('summary')) return { text: `Operational snapshot: ${incidents.filter(x => x.state !== 'Resolved').length} active incidents in this sample, ${problems.length} tracked problem clusters, and latest simulated SLA achievement of 98.4%.`, sources: ['INC1001', 'PRB001', 'SLA-OCT'] }
+  if (q.includes('sla')) { const latest = slaTrend.at(-1)!; return { text: `The latest simulated monthly SLA achievement is ${latest.achievement}%, with ${latest.breaches} recorded breaches.`, sources: [latest.id] } }
+  if (q.includes('recurring')) return { text: `Recurring clusters include ${problems.map(item => item.title).join('; ')}.`, sources: problems.map(item => item.id) }
+  if (q.includes('summary')) { const latest = slaTrend.at(-1)!; return { text: `Operational snapshot: ${incidents.filter(x => x.state !== 'Resolved').length} active incidents in this sample, ${problems.length} tracked problem clusters, and latest simulated SLA achievement of ${latest.achievement}%.`, sources: ['INC1001', 'PRB001', latest.id] } }
   if (q.includes('manager approval') || q.includes('enhancement')) return { text: 'The request touches Employee Center catalog item configuration, Flow Designer approval orchestration, approver-group logic, and the HR integration context. Regression should cover manager lookup, inactive approver fallback, and successful fulfillment.', sources: ['ENH-101', 'DOC-003', 'DOC-004', 'TC-101'] }
   return { text: 'This information is unavailable in the seeded demo dataset. Try one of the suggested questions for a deterministic, source-linked response.', sources: [] }
 }
